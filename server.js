@@ -100,4 +100,8 @@ app.post("/send_mail", (req, res) => {
     res.status(404).send("Email or Link RoomID is err");
   }
 });
+
+app.get("/", (req, res) => {
+  res.send("Hello");
+});
 server.listen(9500, () => console.log("server is running on port 9500"));
