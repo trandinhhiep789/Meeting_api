@@ -104,4 +104,6 @@ app.post("/send_mail", (req, res) => {
 app.get("/", (req, res) => {
   res.send("Hello");
 });
-server.listen(9500, () => console.log("server is running on port 9500"));
+
+const PORT = process.env.PORT || 9500;
+server.listen(PORT, () => console.log("server is running on port", PORT));
