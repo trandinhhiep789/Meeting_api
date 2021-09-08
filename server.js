@@ -3,11 +3,22 @@ const express = require("express");
 const http = require("http");
 const app = express();
 const server = http.createServer(app);
+const FilterBadWord = require("bad-words");
+const dateFormat = require("date-format");
 const nodemailer = require("nodemailer");
 // const socket = require("socket.io");
 // const io = socket(server);
 
+const {
+  addUser,
+  getListUserByRoom,
+  removeUser,
+  getUserById,
+  getListUser,
+} = require("./user");
+
 const cors = require("cors");
+const { Socket } = require("socket.io");
 app.use(cors());
 app.options("*", cors());
 
@@ -35,11 +46,25 @@ io.on("connection", (socket) => {
     } else {
       users[roomID] = [socket.id];
     }
-    console.log(limit);
     socketToRoom[socket.id] = roomID;
     const usersInThisRoom = users[roomID].filter((id) => id !== socket.id);
 
     socket.emit("all users", usersInThisRoom);
+    socket.on("disconnect", () => {
+      const roomID = socketToRoom[socket.id];
+      let room = users[roomID];
+      if (room) {
+        room = room.filter((id) => id !== socket.id);
+        users[roomID] = room;
+      }
+
+      console.log(`client ${socket.id} disconnect`);
+      removeUser(socket.id);
+      // console.log("disconnect");
+      // console.log(roomID);
+      // console.log(socket.id);
+      // socket.broadcast.to(roomID).emit("user-disconnected", socket.id);
+    });
   });
 
   socket.on("sending signal", (payload) => {
@@ -56,13 +81,45 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("disconnect", () => {
-    const roomID = socketToRoom[socket.id];
-    let room = users[roomID];
-    if (room) {
-      room = room.filter((id) => id !== socket.id);
-      users[roomID] = room;
-    }
+  // chat
+  socket.on("join-room-client-to-server", ({ roomID, username }) => {
+    // tạo phòng
+    socket.join(roomID.toString());
+    console.log("New Client Connected", socket.id);
+
+    // tạo user
+    addUser({
+      id: socket.id,
+      room: roomID,
+      username,
+    });
+
+    // xử lý danh sách user trong 1 phòng
+    const userList = getListUserByRoom(roomID);
+    io.to(roomID).emit("send-user-list-server-to-client", userList);
+
+    // nhận tin nhắn từ client lên trên server
+    socket.on("send-messages-client-to-server", (message, callback) => {
+      const fillterbadword = new FilterBadWord();
+      const messageFilter = fillterbadword.clean(message);
+
+      const infoMessage = {
+        content: messageFilter,
+        username: getUserById(socket.id).username,
+        time: dateFormat("dd/MM/yyyy - hh:mm:ss", new Date()),
+      };
+
+      //gửi ngược lại tin nhắn từ server về clinet
+      // socket.emit("send-messages-client-to-server", message); => SAI
+      console.log(infoMessage);
+      io.to(roomID.toString()).emit(
+        "send-messages-client-to-server",
+        infoMessage
+      );
+
+      // gọi lại asknowledgement
+      callback();
+    });
   });
 });
 
@@ -91,9 +148,9 @@ app.post("/send_mail", (req, res) => {
     // Step 3
     transporter.sendMail(mailOptions, (err, data) => {
       if (err) {
-        console.log("Error occurs", err);
+        res.status(404).send("Error occurs", err);
       } else {
-        console.log("Email sent!!!", data);
+        res.status(200).send("Email sent!!!", data);
       }
     });
   } else {
