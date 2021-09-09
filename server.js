@@ -101,10 +101,10 @@ io.on("connection", (socket) => {
     // nhận tin nhắn từ client lên trên server
     socket.on("send-messages-client-to-server", (message, callback) => {
       const fillterbadword = new FilterBadWord();
-      const messageFilter = fillterbadword.clean(message);
-
+      // const messageFilter = fillterbadword.clean(message);
+      console.log(message);
       const infoMessage = {
-        content: messageFilter,
+        content: message,
         username: getUserById(socket.id).username,
         time: dateFormat("dd/MM/yyyy - hh:mm:ss", new Date()),
       };
