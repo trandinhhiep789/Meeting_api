@@ -36,35 +36,96 @@ const socketToRoom = {};
 
 io.on("connection", (socket) => {
   socket.on("join room", (roomID, limit) => {
-    if (users[roomID]) {
-      const length = users[roomID].length;
-      if (length == limit) {
-        socket.emit("room full");
-        return;
+    if (roomID.length < 50) {
+      if (limit.length < 3) {
+        if (Number.isInteger(Number(limit)) && limit >= 2 && limit <= 10) {
+          if (users[roomID]) {
+            const length = users[roomID].length;
+            if (length == limit) {
+              socket.emit("room full");
+              return;
+            }
+            users[roomID].push(socket.id);
+          } else {
+            users[roomID] = [socket.id];
+          }
+          socketToRoom[socket.id] = roomID;
+          const usersInThisRoom = users[roomID].filter(
+            (id) => id !== socket.id
+          );
+          socket.emit("all users", usersInThisRoom);
+          console.log(usersInThisRoom);
+          socket.on("disconnect", () => {
+            const idroom = socketToRoom[socket.id];
+            let room = users[idroom];
+            if (room) {
+              room = room.filter((id) => id !== socket.id);
+              users[idroom] = room;
+              console.log(users[idroom]);
+            }
+            console.log(`client ${socket.id} disconnect`);
+            removeUser(socket.id);
+            const userId = socket.id;
+            socket.broadcast.to(room).emit("user-disconnected", { userId });
+          });
+          // chat
+          socket.on("join-room-client-to-server", ({ roomID, username }) => {
+            // tạo phòng
+            socket.join(roomID.toString());
+            console.log("New Client Connected", socket.id);
+            if (
+              roomID.length < 100 &&
+              username.length <= 14 &&
+              username !== ""
+            ) {
+              // tạo user
+              addUser({
+                id: socket.id,
+                room: roomID,
+                username,
+              });
+
+              // xử lý danh sách user trong 1 phòng
+              const userList = getListUserByRoom(roomID);
+              io.to(roomID).emit("send-user-list-server-to-client", userList);
+
+              // nhận tin nhắn từ client lên trên server
+              socket.on(
+                "send-messages-client-to-server",
+                (message, callback) => {
+                  const fillterbadword = new FilterBadWord();
+                  // const messageFilter = fillterbadword.clean(message);
+                  if (message.length <= 100 && message !== "") {
+                    const infoMessage = {
+                      id: socket.id,
+                      content: message,
+                      username: getUserById(socket.id).username,
+                      time: dateFormat("dd/MM/yyyy - hh:mm:ss", new Date()),
+                    };
+
+                    //gửi ngược lại tin nhắn từ server về clinet
+                    // socket.emit("send-messages-client-to-server", message); => SAI
+                    io.to(roomID.toString()).emit(
+                      "send-messages-client-to-server",
+                      infoMessage
+                    );
+
+                    // gọi lại asknowledgement
+                    callback();
+                  } else {
+                    console.log("The limit is 100 words");
+                  }
+                }
+              );
+            } else {
+              console.log("There is an err with roomID and username");
+            }
+          });
+        }
       }
-      users[roomID].push(socket.id);
     } else {
-      users[roomID] = [socket.id];
+      socket.emit("room full");
     }
-    socketToRoom[socket.id] = roomID;
-    const usersInThisRoom = users[roomID].filter((id) => id !== socket.id);
-
-    socket.emit("all users", usersInThisRoom);
-    socket.on("disconnect", () => {
-      const roomID = socketToRoom[socket.id];
-      let room = users[roomID];
-      if (room) {
-        room = room.filter((id) => id !== socket.id);
-        users[roomID] = room;
-      }
-
-      console.log(`client ${socket.id} disconnect`);
-      removeUser(socket.id);
-      // console.log("disconnect");
-      // console.log(roomID);
-      // console.log(socket.id);
-      // socket.broadcast.to(roomID).emit("user-disconnected", socket.id);
-    });
   });
 
   socket.on("sending signal", (payload) => {
@@ -80,53 +141,12 @@ io.on("connection", (socket) => {
       id: socket.id,
     });
   });
-
-  // chat
-  socket.on("join-room-client-to-server", ({ roomID, username }) => {
-    // tạo phòng
-    socket.join(roomID.toString());
-    console.log("New Client Connected", socket.id);
-
-    // tạo user
-    addUser({
-      id: socket.id,
-      room: roomID,
-      username,
-    });
-
-    // xử lý danh sách user trong 1 phòng
-    const userList = getListUserByRoom(roomID);
-    io.to(roomID).emit("send-user-list-server-to-client", userList);
-
-    // nhận tin nhắn từ client lên trên server
-    socket.on("send-messages-client-to-server", (message, callback) => {
-      const fillterbadword = new FilterBadWord();
-      // const messageFilter = fillterbadword.clean(message);
-      console.log(message);
-      const infoMessage = {
-        content: message,
-        username: getUserById(socket.id).username,
-        time: dateFormat("dd/MM/yyyy - hh:mm:ss", new Date()),
-      };
-
-      //gửi ngược lại tin nhắn từ server về clinet
-      // socket.emit("send-messages-client-to-server", message); => SAI
-      console.log(infoMessage);
-      io.to(roomID.toString()).emit(
-        "send-messages-client-to-server",
-        infoMessage
-      );
-
-      // gọi lại asknowledgement
-      callback();
-    });
-  });
 });
 
 app.post("/send_mail", (req, res) => {
   let { roomId, email } = req.body;
 
-  if (roomId != "" && email != "") {
+  if (roomId != "" && email != "" && email.length < 50 && roomId.length < 100) {
     // Step 1
     let transporter = nodemailer.createTransport({
       service: "gmail",
@@ -150,7 +170,7 @@ app.post("/send_mail", (req, res) => {
       if (err) {
         res.status(404).send("Error occurs", err);
       } else {
-        res.status(200).send("Email sent!!!", data);
+        res.status(200).send("Email sent!!!");
       }
     });
   } else {
