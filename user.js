@@ -34,6 +34,7 @@ const getListUser = () => userList;
 
 // get user by id
 const getUserById = (id) => userList.find((user) => user.id === id);
+const getUserByName = (name) => userList.find((user) => user.username === name);
 
 module.exports = {
   addUser,
@@ -41,4 +42,5 @@ module.exports = {
   getListUserByRoom,
   getUserById,
   getListUser,
+  getUserByName,
 };
